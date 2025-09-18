@@ -204,11 +204,11 @@
             }
             hasLoaded = true;
 
-            fetch('https://api.at.govt.nz/realtime/legacy/vehiclelocations', {
+            fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb', {
                 method: 'GET',
                 headers: {
                     'Cache-Control': 'no-cache',
-                    'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                    'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
                 }
             })
             .then(response => response.json())
@@ -227,11 +227,11 @@
                         markers[id] = marker;
                         marker.on("tooltipopen", function (e) {
                             if (e.target.trip) {
-                                fetch('https://api.at.govt.nz/gtfs/v3/trips/' + e.target.trip.trip_id, {
+                                fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb' + e.target.trip.trip_id, {
                                     method: 'GET',
                                     headers: {
                                         'Cache-Control': 'no-cache',
-                                        'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                                        'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
                                     }
                                 })
                                 .then(response => response.json())
