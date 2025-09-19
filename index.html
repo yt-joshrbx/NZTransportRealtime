@@ -240,8 +240,9 @@
                         markers[id] = marker;
                         marker.on("tooltipopen", function (e) {
                             if (e.target.trip) {
-                                fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb' + e.target.trip.trip_id, {
+                                fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb', {
                                     method: 'GET',
+                                    // Request headers
                                     headers: {
                                         'Cache-Control': 'no-cache',
                                         'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
