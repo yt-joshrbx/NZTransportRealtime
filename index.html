@@ -71,6 +71,7 @@
             "Wikimedia": L.tileLayer.provider("Wikimedia")
         }
 
+        map.attributionControl.addAttribution("© <a href='https://dev-portal.at.govt.nz/'>AT</a>");
         map.attributionControl.addAttribution("© <a href='https://apidevelopers.metroinfo.co.nz/'>Metro Canterbury</a>");
 
         var layers = {
@@ -169,7 +170,7 @@
         var hasLoaded = false;
         var routes = {};
 
-        map.spin(true);
+       map.spin(true);
         fetch('https://api.at.govt.nz/gtfs/v3/routes', {
             method: 'GET',
             headers: {
@@ -195,6 +196,55 @@
             map.spin(false);
             console.error(err);
             $("#status").text("Error loading routes.");
+        });
+
+        function loop() {
+            if (hasLoaded && !document.hasFocus()) {
+                console.log("tab unfocused, skipping");
+                return;
+            }
+            hasLoaded = true;
+
+            fetch('https://api.at.govt.nz/realtime/legacy/vehiclelocations', {
+                method: 'GET',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                map.spin(false);
+                for (var i in data.response.entity) {
+                    var id = data.response.entity[i].id;
+                    var v = data.response.entity[i].vehicle;
+                    var desc = `<b>${v.vehicle.label}</b><br>`;
+                    var layer = layers[null];
+                    var marker = markers[id];
+                    if (marker) {
+                        marker.setLatLng([v.position.latitude, v.position.longitude]);
+                    } else {
+                        marker = L.circle([v.position.latitude, v.position.longitude], { radius: 20, desc: desc });
+                        markers[id] = marker;
+                        marker.on("tooltipopen", function (e) {
+                            if (e.target.trip) {
+                                fetch('https://api.at.govt.nz/gtfs/v3/trips/' + e.target.trip.trip_id, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Cache-Control': 'no-cache',
+                                        'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(response => {
+                                    if (response.message) {
+                                        console.error(response.message);
+                                        $("#status").text(`Error getting trip: ${response.message}`);
+                                    } else {
+                                        $("#headsign").text(response.data.attributes.trip_headsign);
+                                    }
+                                })
+                                .catch(err => console.error(err));
         });
 
         function loop() {
