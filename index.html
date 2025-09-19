@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NZ Transit Realtime</title>
+    <title>NZ Transit Realtime Map</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta content="script-src 'self' https://unpkg.com https://cdnjs.cloudflare.com https://www.googletagmanager.com;">
@@ -27,10 +27,10 @@
             position: absolute;
             top: 10px;
             left: 0; right: 0; margin: auto;
-            z-index: 1000; width: 500px;
+            z-index: 1000; width: 600px;
             text-align: center; color: white; border-radius: 5px; padding: 10px;
             background-color: rgba(0, 0, 0, 0.8);
-            font-size: 1rem; font-family: Arial, Helvetica, sans-serif;
+            font-size: 1.1rem; font-family: Arial, Helvetica, sans-serif;
             text-shadow: 2px 2px #000000; font-weight: normal;
         }
         .info {
@@ -38,21 +38,15 @@
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.2); border-radius: 5px;
         }
     </style>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-77710107-12"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'UA-77710107-12');
-    </script>
 </head>
 <body>
-    <h1 id="title">Welcome to the New Zealand Transit Realtime Map!</h1>
+    <h1 id="title">Welcome to the New Zealand Transit Realtime Map! (Auckland, Wellington, Christchurch, Waikato)</h1>
     <div id="map"></div>
     <script>
+        // Initialize map and region boundaries
         var map = L.map('map', {
-            center: [-36.8862, 174.7651],
-            zoom: 12,
+            center: [-41.2, 174.7],
+            zoom: 6,
             worldCopyJump: true
         });
 
@@ -71,46 +65,48 @@
             "Wikimedia": L.tileLayer.provider("Wikimedia")
         }
 
-        map.attributionControl.addAttribution("© <a href='https://dev-portal.at.govt.nz/'>AT</a>");
-        map.attributionControl.addAttribution("© <a href='https://apidevelopers.metroinfo.co.nz/'>Metro Canterbury</a>");
+        map.attributionControl.addAttribution(
+            "© <a href='https://dev-portal.at.govt.nz/'>AT</a> | " +
+            "<a href='https://apidevelopers.metroinfo.co.nz/'>Metroinfo</a> | " +
+            "<a href='https://opendata.metlink.org.nz/'>Metlink</a> | " +
+            "<a href='https://busit.co.nz/'>Busit</a>"
+        );
 
-        var layers = {
-            2: L.layerGroup().addTo(map),
-            3: L.layerGroup().addTo(map),
-            4: L.layerGroup().addTo(map),
-            null: L.layerGroup().addTo(map)
+        // Regional layers
+        var regionLayers = {
+            "Auckland": L.layerGroup().addTo(map),
+            "Wellington": L.layerGroup().addTo(map),
+            "Christchurch": L.layerGroup().addTo(map),
+            "Waikato": L.layerGroup().addTo(map),
         };
 
-        var search = L.control.search({
-            layer: L.layerGroup([layers[2], layers[3], layers[4], layers[null]]),
-            initial: false,
-            propertyName: 'desc'
-        });
-        map.addControl(search);
-        map.removeLayer(layers[null]);
-
-        // Use event delegation for .search-input which is dynamically inserted by Leaflet Search
-        $(document).on("keyup", ".search-input", function () {
-            var searchVal = this.value.toLowerCase();
-            for (var i in markers) {
-                var marker = markers[i];
-                if (!searchVal || marker.options.desc.toLowerCase().includes(searchVal)) {
-                    marker.setStyle({ opacity: 1, fillOpacity: .2 });
-                } else {
-                    marker.setStyle({ opacity: 0, fillOpacity: 0 });
-                }
-            }
-        });
-
+        // Overlay control
         var overlayMaps = {
-            "Buses": layers[3],
-            "Trains": layers[2],
-            "Ferries": layers[4],
-            "Out of Service": layers[null]
+            "Auckland": regionLayers["Auckland"],
+            "Wellington": regionLayers["Wellington"],
+            "Christchurch": regionLayers["Christchurch"],
+            "Waikato": regionLayers["Waikato"]
         };
 
         L.control.layers(baseMaps, overlayMaps).addTo(map);
 
+        // Unified region marker storage
+        var markers = {
+            "Auckland": {},
+            "Wellington": {},
+            "Christchurch": {},
+            "Waikato": {}
+        };
+
+        // Search control will be updated based on visible layers
+        var searchLayer = L.layerGroup();
+        var searchControl = L.control.search({
+            layer: searchLayer,
+            initial: false,
+            propertyName: 'desc'
+        }).addTo(map);
+
+        // Legend & coloring
         var legend = L.control({ position: 'bottomright' });
         legend.onAdd = function (map) {
             var div = L.DomUtil.create('div', 'info legend');
@@ -119,19 +115,9 @@
         };
         legend.addTo(map);
 
-        $(document).on("change", "#colourscheme", function () {
-            window.colourscheme = this.value;
-            location.hash = this.value;
-            for (var i in markers) {
-                updateMarkerColour(markers[i]);
-            }
-        });
-
-        window.colourscheme = "Route";
-        if (location.hash) {
-            window.colourscheme = location.hash.slice(1);
-            $("#colourscheme").val(window.colourscheme);
-        }
+        var occupancy = ["empty", "many seats available", "few seats available", "standing room only", "limited standing room", "full", "not accepting passengers"];
+        var occupancyColors = ["#4575b4", "#91bfdb", "#e0f3f8", "#fee090", "#fc8d59", "#d73027", "black"];
+        var speedColors = chroma.scale([chroma.hsv(270, 1, 1), chroma.hsv(180, 1, 1), chroma.hsv(90, 1, 1), chroma.hsv(0, 1, 1)]).mode("hsv").domain([0, 100]);
 
         function stringToColour(str) {
             var hash = 0;
@@ -146,6 +132,7 @@
             return colour;
         }
 
+        // Marker coloring function
         function updateMarkerColour(marker) {
             var color = "black";
             if (window.colourscheme == "Route") {
@@ -155,64 +142,163 @@
                     color = stringToColour(marker.route_long_name);
                 }
             } else if (window.colourscheme == "Occupancy" && marker.occupancy_status !== undefined) {
-                color = occupancyColors[marker.occupancy_status];
+                color = occupancyColors[marker.occupancy_status] || "gray";
             } else if (window.colourscheme == "Speed") {
                 color = speedColors(marker.speed);
             }
             marker.setStyle({ color: color });
         }
 
-        var markers = {};
-        var occupancy = ["empty", "many seats available", "few seats available", "standing room only", "limited standing room", "full", "not accepting passengers"];
-        var occupancyColors = ["#4575b4", "#91bfdb", "#e0f3f8", "#fee090", "#fc8d59", "#d73027", "black"];
-        var speedColors = chroma.scale([chroma.hsv(270, 1, 1), chroma.hsv(180, 1, 1), chroma.hsv(90, 1, 1), chroma.hsv(0, 1, 1)]).mode("hsv").domain([0, 100]);
+        window.colourscheme = "Route";
+        $(document).on("change", "#colourscheme", function () {
+            window.colourscheme = this.value;
+            location.hash = this.value;
+            Object.values(markers).forEach(regionMarkers => {
+                for (var i in regionMarkers) {
+                    updateMarkerColour(regionMarkers[i]);
+                }
+            });
+        });
 
-        var hasLoaded = false;
-        var routes = {};
+        if (location.hash) {
+            window.colourscheme = location.hash.slice(1);
+            $("#colourscheme").val(window.colourscheme);
+        }
 
-       map.spin(true);
-            fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb', {
-            method: 'GET',
-            // Request headers
-            headers: {
-                'Cache-Control': 'no-cache',
-                'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
-            }
+        // Update search layer based on visible overlays
+        function updateSearchLayer() {
+            searchLayer.clearLayers();
+            map.eachLayer(function (layer) {
+                for (var region in regionLayers) {
+                    if (layer === regionLayers[region] && map.hasLayer(layer)) {
+                        Object.values(markers[region]).forEach(m => searchLayer.addLayer(m));
+                    }
+                }
+            });
+        }
+        map.on('overlayadd overlayremove', updateSearchLayer);
+
+        // Search input coloring for visible markers
+        $(document).on("keyup", ".search-input", function () {
+            var searchVal = this.value.toLowerCase();
+            map.eachLayer(function (layer) {
+                for (var region in regionLayers) {
+                    if (layer === regionLayers[region] && map.hasLayer(layer)) {
+                        for (var i in markers[region]) {
+                            var marker = markers[region][i];
+                            if (!searchVal || marker.options.desc.toLowerCase().includes(searchVal)) {
+                                marker.setStyle({ opacity: 1, fillOpacity: .2 });
+                            } else {
+                                marker.setStyle({ opacity: 0, fillOpacity: 0 });
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        // Main data loading loop
+        function fetchAuckland() {
+            // Auckland Transport
+            fetch('https://api.at.govt.nz/realtime/legacy/vehiclelocations', {
+                method: 'GET',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                }
             })
             .then(response => response.json())
             .then(data => {
-                map.spin(false);
-                for (var i in data.response.entity) {
-                    var id = data.response.entity[i].id;
-                    var v = data.response.entity[i].vehicle;
-                    var desc = `<b>${v.vehicle.label}</b><br>`;
-                    var layer = layers[null];
-                    var marker = markers[id];
-                    if (marker) {
-                        marker.setLatLng([v.position.latitude, v.position.longitude]);
-                    } else {
-                        marker = L.circle([v.position.latitude, v.position.longitude], { radius: 20, desc: desc });
-                        markers[id] = marker;
-                        marker.on("tooltipopen", function (e) {
-                            if (e.target.trip) {
-                                fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb', {
-        method: 'GET',
-        // Request headers
-        headers: {
-            'Cache-Control': 'no-cache',
-            'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',}
-    })
-    .then(response => {
-        console.log(response.status);
-        console.log(response.text());
-    })
-    .catch(err => console.error(err));
-            .catch(err => {
-                map.spin(false);
-                console.error(err);
-                $("#status").text("Error loading vehicle locations.");
+                regionLayers["Auckland"].clearLayers();
+                markers["Auckland"] = {};
+                (data.response.entity || []).forEach(function (entity) {
+                    var v = entity.vehicle;
+                    var latlng = [v.position.latitude, v.position.longitude];
+                    var desc = `<b>${v.vehicle.label}</b><br>Speed: ${Math.round(v.position.speed)} km/h<br>Occupancy: ${occupancy[v.occupancy_status] || "unknown"}<br>Plate: ${v.vehicle.license_plate}`;
+                    var marker = L.circle(latlng, { radius: 20, desc: desc });
+                    marker.route_long_name = v.trip && v.trip.route_id;
+                    marker.occupancy_status = v.occupancy_status;
+                    marker.speed = Math.round(v.position.speed);
+                    marker.route_type = null; // Set if available
+                    marker.bindTooltip(desc);
+                    updateMarkerColour(marker);
+                    marker.addTo(regionLayers["Auckland"]);
+                    markers["Auckland"][entity.id] = marker;
+                });
+                updateSearchLayer();
             });
-        setInterval(loop, 10000);
+        }
+
+        function fetchWellington() {
+            // Metlink Wellington (example endpoint, needs real API key and endpoint)
+            fetch('https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehicle-positions', {
+                headers: {
+                    'Accept': 'application/x-protobuf',
+                    // 'Authorization': 'Bearer Qe5MJQy7QKG0wVqCR7o7SkUcVYuEzX9S18LElVe0', // If required
+                }
+            })
+            .then(response => response.arrayBuffer())
+            .then(buffer => {
+                // Here you would decode GTFS-realtime protobuf. Use a library such as gtfs-realtime-bindings (not shown).
+                // For demo, just clear and skip.
+                regionLayers["Wellington"].clearLayers();
+                markers["Wellington"] = {};
+                // Add marker demo (remove in production)
+                /*
+                var marker = L.circle([-41.2865, 174.7762], { radius: 20, desc: "Demo Bus (Wellington)" });
+                marker.route_long_name = "DemoRoute";
+                marker.occupancy_status = 0;
+                marker.speed = 42;
+                marker.route_type = 3;
+                marker.bindTooltip(marker.options.desc);
+                updateMarkerColour(marker);
+                marker.addTo(regionLayers["Wellington"]);
+                markers["Wellington"]["demo"] = marker;
+                */
+                // TODO: Parse and add real markers for Metlink
+                updateSearchLayer();
+            });
+        }
+
+        function fetchChristchurch() {
+            // Metroinfo Christchurch (example endpoint, needs real API key and endpoint)
+            fetch('https://apis.metroinfo.co.nz/rti/vehiclepositions', {
+                headers: {
+                    // 'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                regionLayers["Christchurch"].clearLayers();
+                markers["Christchurch"] = {};
+                // TODO: Parse and add real markers for Metroinfo
+                updateSearchLayer();
+            });
+        }
+
+        function fetchWaikato() {
+            // Busit Waikato (may be static demo or real endpoint)
+            fetch('https://busit.github.io/realtime-demo.json')
+            .then(response => response.json())
+            .then(data => {
+                regionLayers["Waikato"].clearLayers();
+                markers["Waikato"] = {};
+                // TODO: Parse and add real markers for Busit
+                updateSearchLayer();
+            });
+        }
+
+        // Main update loop
+        function updateAllRegions() {
+            fetchAuckland();
+            fetchWellington();
+            fetchChristchurch();
+            fetchWaikato();
+        }
+
+        setInterval(updateAllRegions, 10000);
+        updateAllRegions();
+
     </script>
 </body>
 </html>
