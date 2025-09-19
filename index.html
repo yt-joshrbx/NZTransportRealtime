@@ -205,6 +205,19 @@
             hasLoaded = true;
 
             fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb', {
+            method: 'GET',
+            // Request headers
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',}
+            })
+            .then(response => {
+                console.log(response.status);
+                console.log(response.text());
+            })
+            .catch(err => console.error(err));
+            
+            fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb', {
                 method: 'GET',
                 headers: {
                     'Cache-Control': 'no-cache',
