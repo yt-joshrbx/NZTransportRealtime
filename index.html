@@ -94,7 +94,7 @@
 
   // Wellington
   function fetchWellington() {
-    fetch('https://YOUR_PROXY_URL_HERE/vehicle-positions.json') // replace with your proxy URL
+    fetch('https://gtfs-realtime-to-json.org/convert?url=https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehicle-positions')
     .then(res => res.json())
     .then(data => {
       regionLayers["Wellington"].clearLayers();
