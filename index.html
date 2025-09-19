@@ -230,64 +230,81 @@
         }
 
         function fetchWellington() {
-            // Metlink Wellington (example endpoint, needs real API key and endpoint)
-            fetch('https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehicle-positions', {
-                headers: {
-                    'Accept': 'application/x-protobuf',
-                    // 'Authorization': 'Bearer Qe5MJQy7QKG0wVqCR7o7SkUcVYuEzX9S18LElVe0', // If required
-                }
-            })
-            .then(response => response.arrayBuffer())
-            .then(buffer => {
-                // Here you would decode GTFS-realtime protobuf. Use a library such as gtfs-realtime-bindings (not shown).
-                // For demo, just clear and skip.
-                regionLayers["Wellington"].clearLayers();
-                markers["Wellington"] = {};
-                // Add marker demo (remove in production)
-                /*
-                var marker = L.circle([-41.2865, 174.7762], { radius: 20, desc: "Demo Bus (Wellington)" });
-                marker.route_long_name = "DemoRoute";
-                marker.occupancy_status = 0;
-                marker.speed = 42;
-                marker.route_type = 3;
-                marker.bindTooltip(marker.options.desc);
-                updateMarkerColour(marker);
-                marker.addTo(regionLayers["Wellington"]);
-                markers["Wellington"]["demo"] = marker;
-                */
-                // TODO: Parse and add real markers for Metlink
-                updateSearchLayer();
-            });
-        }
+    // Use a conversion proxy that returns JSON, e.g., https://gtfs-realtime-to-json.org/
+    fetch('https://gtfs-realtime-to-json.org/convert?url=https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehicle-positions')
+    .then(response => response.json())
+    .then(data => {
+        regionLayers["Wellington"].clearLayers();
+        markers["Wellington"] = {};
+        (data.entity || []).forEach(function(entity) {
+            if (!entity.vehicle || !entity.vehicle.position) return;
+            var v = entity.vehicle;
+            var pos = v.position;
+            var latlng = [pos.latitude, pos.longitude];
+            var speed = Math.round(pos.speed || 0);
+            var desc = `<b>${v.vehicle && v.vehicle.label ? v.vehicle.label : "Unknown Vehicle"}</b><br>Speed: ${speed} km/h<br>Occupancy: ${occupancy[v.occupancy_status] || "unknown"}<br>Plate: ${(v.vehicle && v.vehicle.license_plate) || "unknown"}`;
+            var marker = L.circle(latlng, { radius: 20, desc: desc });
+            marker.route_long_name = v.trip && v.trip.route_id;
+            marker.occupancy_status = v.occupancy_status;
+            marker.speed = speed;
+            marker.route_type = 3; // Metlink = bus
+            marker.bindTooltip(desc);
+            updateMarkerColour(marker);
+            marker.addTo(regionLayers["Wellington"]);
+            markers["Wellington"][entity.id] = marker;
+        });
+        updateSearchLayer();
+    });
+}
 
         function fetchChristchurch() {
-            // Metroinfo Christchurch (example endpoint, needs real API key and endpoint)
-            fetch('https://apis.metroinfo.co.nz/rti/vehiclepositions', {
-                headers: {
-                    // 'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                regionLayers["Christchurch"].clearLayers();
-                markers["Christchurch"] = {};
-                // TODO: Parse and add real markers for Metroinfo
-                updateSearchLayer();
-            });
-        }
+    fetch('https://apis.metroinfo.co.nz/rti/vehiclepositions', {
+        // 'Ocp-Apim-Subscription-Key': '<YOUR_KEY>'
+    })
+    .then(response => response.json())
+    .then(data => {
+        regionLayers["Christchurch"].clearLayers();
+        markers["Christchurch"] = {};
+        (data || []).forEach(function(entity) {
+            var latlng = [entity.VehicleLocation.Latitude, entity.VehicleLocation.Longitude];
+            var desc = `<b>${entity.VehicleRef}</b><br>Route: ${entity.PublishedLineName}<br>To: ${entity.DestinationName}<br>Occupancy: ${entity.Occupancy}`;
+            var marker = L.circle(latlng, { radius: 20, desc: desc });
+            marker.route_long_name = entity.PublishedLineName;
+            marker.occupancy_status = occupancy.indexOf(entity.Occupancy.toLowerCase());
+            marker.speed = 0; // Not provided
+            marker.route_type = 3; // bus
+            marker.bindTooltip(desc);
+            updateMarkerColour(marker);
+            marker.addTo(regionLayers["Christchurch"]);
+            markers["Christchurch"][entity.VehicleRef] = marker;
+        });
+        updateSearchLayer();
+    });
+}
 
         function fetchWaikato() {
-            // Busit Waikato (may be static demo or real endpoint)
-            fetch('https://busit.github.io/realtime-demo.json')
-            .then(response => response.json())
-            .then(data => {
-                regionLayers["Waikato"].clearLayers();
-                markers["Waikato"] = {};
-                // TODO: Parse and add real markers for Busit
-                updateSearchLayer();
-            });
-        }
-
+    fetch('https://busit.github.io/realtime-demo.json')
+    .then(response => response.json())
+    .then(data => {
+        regionLayers["Waikato"].clearLayers();
+        markers["Waikato"] = {};
+        (data.vehicles || []).forEach(function(v) {
+            var latlng = [v.lat, v.lon];
+            var occIdx = occupancy.indexOf((v.occupancy || "").toLowerCase());
+            var desc = `<b>${v.route}</b><br>Speed: ${v.speed || 0} km/h<br>Occupancy: ${v.occupancy || "unknown"}<br>Plate: ${v.plate || "unknown"}`;
+            var marker = L.circle(latlng, { radius: 20, desc: desc });
+            marker.route_long_name = v.route;
+            marker.occupancy_status = occIdx === -1 ? 0 : occIdx;
+            marker.speed = v.speed || 0;
+            marker.route_type = 3; // bus
+            marker.bindTooltip(desc);
+            updateMarkerColour(marker);
+            marker.addTo(regionLayers["Waikato"]);
+            markers["Waikato"][v.id] = marker;
+        });
+        updateSearchLayer();
+    });
+}
         // Main update loop
         function updateAllRegions() {
             fetchAuckland();
