@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<html>
 <head>
     <title>AT Transit Realtime</title>
     <meta charset="utf-8" />
@@ -69,51 +70,106 @@
             }),
             "Wikimedia": L.tileLayer.provider("Wikimedia")
         }
-<script>
-  // === API KEYS ===
-  const AT_KEY = "b122c467e7e145b7bfcd6d854d09b01b";
-  const METROINFO_KEY = "70bec02cbae84bbfa29b4e906a2035d4";
 
-  // === MAP INITIALISE ===
-  var map = L.map('map').setView([-41.2, 174.8], 6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 20
-  }).addTo(map);
+        map.attributionControl.addAttribution("© <a href='https://dev-portal.at.govt.nz/'>AT</a>");
 
-  // === GLOBALS ===
-  var regionLayers = {
-    "Auckland": L.layerGroup().addTo(map),
-    "Wellington": L.layerGroup().addTo(map),
-    "Christchurch": L.layerGroup().addTo(map),
-    "Waikato": L.layerGroup().addTo(map)
-  };
-  var markers = {
-    "Auckland": {},
-    "Wellington": {},
-    "Christchurch": {},
-    "Waikato": {}
-  };
-  var occupancy = ["unknown", "empty", "many seats", "few seats", "full"];
+        var layers = {
+            2: L.layerGroup().addTo(map),
+            3: L.layerGroup().addTo(map),
+            4: L.layerGroup().addTo(map),
+            null: L.layerGroup().addTo(map)
+        };
 
-  // === FUNCTIONS ===
-  function updateMarkerColour(marker) {
-    let occ = marker.occupancy_status || 0;
-    let colour = "blue";
-    if (occ === 1) colour = "green";
-    else if (occ === 2) colour = "orange";
-    else if (occ === 3) colour = "red";
-    marker.setStyle({ color: colour });
-  }
+        var search = L.control.search({
+            layer: L.layerGroup([layers[2], layers[3], layers[4], layers[null]]),
+            initial: false,
+            propertyName: 'desc'
+        });
+        map.addControl(search);
+        map.removeLayer(layers[null]);
 
-  function updateSearchLayer() {
-    // (not fully fleshed, placeholder for your existing search logic)
-  }
+        // Use event delegation for .search-input which is dynamically inserted by Leaflet Search
+        $(document).on("keyup", ".search-input", function () {
+            var searchVal = this.value.toLowerCase();
+            for (var i in markers) {
+                var marker = markers[i];
+                if (!searchVal || marker.options.desc.toLowerCase().includes(searchVal)) {
+                    marker.setStyle({ opacity: 1, fillOpacity: .2 });
+                } else {
+                    marker.setStyle({ opacity: 0, fillOpacity: 0 });
+                }
+            }
+        });
 
-  // === FETCH FUNCTIONS ===
+        var overlayMaps = {
+            "AT Buses": layers[3],
+            "AT Trains": layers[2],
+            "AT Ferries": layers[4],
+            "Out of Service": layers[null]
+        };
 
-  // Auckland
-  function fetchAuckland() {
-    map.spin(true);
+        L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+        var legend = L.control({ position: 'bottomright' });
+        legend.onAdd = function (map) {
+            var div = L.DomUtil.create('div', 'info legend');
+            div.innerHTML = 'Colour by: <select id="colourscheme"><option>Route</option><option>Occupancy</option><option>Speed</option></select><div id="status"></div>';
+            return div;
+        };
+        legend.addTo(map);
+
+        $(document).on("change", "#colourscheme", function () {
+            window.colourscheme = this.value;
+            location.hash = this.value;
+            for (var i in markers) {
+                updateMarkerColour(markers[i]);
+            }
+        });
+
+        window.colourscheme = "Route";
+        if (location.hash) {
+            window.colourscheme = location.hash.slice(1);
+            $("#colourscheme").val(window.colourscheme);
+        }
+
+        function stringToColour(str) {
+            var hash = 0;
+            for (var i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            var colour = '#';
+            for (var i = 0; i < 3; i++) {
+                var value = (hash >> (i * 8)) & 0xFF;
+                colour += ('00' + value.toString(16)).substr(-2);
+            }
+            return colour;
+        }
+
+        function updateMarkerColour(marker) {
+            var color = "black";
+            if (window.colourscheme == "Route") {
+                if (marker.route_type == 4) {
+                    color = "blue";
+                } else if (marker.route_long_name) {
+                    color = stringToColour(marker.route_long_name);
+                }
+            } else if (window.colourscheme == "Occupancy" && marker.occupancy_status !== undefined) {
+                color = occupancyColors[marker.occupancy_status];
+            } else if (window.colourscheme == "Speed") {
+                color = speedColors(marker.speed);
+            }
+            marker.setStyle({ color: color });
+        }
+
+        var markers = {};
+        var occupancy = ["empty", "many seats available", "few seats available", "standing room only", "limited standing room", "full", "not accepting passengers"];
+        var occupancyColors = ["#4575b4", "#91bfdb", "#e0f3f8", "#fee090", "#fc8d59", "#d73027", "black"];
+        var speedColors = chroma.scale([chroma.hsv(270, 1, 1), chroma.hsv(180, 1, 1), chroma.hsv(90, 1, 1), chroma.hsv(0, 1, 1)]).mode("hsv").domain([0, 100]);
+
+        var hasLoaded = false;
+        var routes = {};
+
+        map.spin(true);
         fetch('https://api.at.govt.nz/gtfs/v3/routes', {
             method: 'GET',
             headers: {
@@ -208,98 +264,24 @@
                             layer = layers[null];
                         }
                     }
-
-  // Wellington
-  function fetchWellington() {
-    fetch('https://gtfs-realtime-to-json.org/convert?url=https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehicle-positions')
-    .then(res => res.json())
-    .then(data => {
-      regionLayers["Wellington"].clearLayers();
-      markers["Wellington"] = {};
-      (data.entity || []).forEach(entity => {
-        var latlng = [entity.vehicle.position.latitude, entity.vehicle.position.longitude];
-        var occText = (entity.vehicle.occupancy_status || "unknown").toLowerCase();
-        var occIdx = occupancy.indexOf(occText);
-        var desc = `<b>${entity.vehicle.vehicle.label || entity.vehicle.vehicle.id}</b><br>Route: ${entity.vehicle.trip.route_id}<br>Occupancy: ${entity.vehicle.occupancy_status || "unknown"}`;
-        var marker = L.circle(latlng, { radius: 20, desc: desc });
-        marker.route_long_name = entity.vehicle.trip.route_id;
-        marker.occupancy_status = occIdx === -1 ? 0 : occIdx;
-        marker.speed = 0;
-        marker.route_type = 3;
-        marker.bindTooltip(desc);
-        updateMarkerColour(marker);
-        marker.addTo(regionLayers["Wellington"]);
-        markers["Wellington"][entity.vehicle.vehicle.id] = marker;
-      });
-      updateSearchLayer();
-    });
-  }
-
-  // Christchurch
-  function fetchChristchurch() {
-    fetch('https://apis.metroinfo.co.nz/rti/vehiclepositions', {
-      headers: { 'Ocp-Apim-Subscription-Key': METROINFO_KEY }
-    })
-    .then(res => res.json())
-    .then(data => {
-      regionLayers["Christchurch"].clearLayers();
-      markers["Christchurch"] = {};
-      (data || []).forEach(entity => {
-        var latlng = [entity.VehicleLocation.Latitude, entity.VehicleLocation.Longitude];
-        var occText = (entity.Occupancy || "unknown").toLowerCase();
-        var occIdx = occupancy.indexOf(occText);
-        var desc = `<b>${entity.VehicleRef}</b><br>Route: ${entity.PublishedLineName}<br>To: ${entity.DestinationName}<br>Occupancy: ${entity.Occupancy || "unknown"}`;
-        var marker = L.circle(latlng, { radius: 20, desc: desc });
-        marker.route_long_name = entity.PublishedLineName;
-        marker.occupancy_status = occIdx === -1 ? 0 : occIdx;
-        marker.speed = 0;
-        marker.route_type = 3;
-        marker.bindTooltip(desc);
-        updateMarkerColour(marker);
-        marker.addTo(regionLayers["Christchurch"]);
-        markers["Christchurch"][entity.VehicleRef] = marker;
-      });
-      updateSearchLayer();
-    });
-  }
-
-  // Waikato
-  function fetchWaikato() {
-    fetch('https://busit.github.io/realtime-demo.json')
-    .then(res => res.json())
-    .then(data => {
-      regionLayers["Waikato"].clearLayers();
-      markers["Waikato"] = {};
-      (data.vehicles || []).forEach(v => {
-        var latlng = [v.lat, v.lon];
-        var occText = (v.occupancy || "unknown").toLowerCase();
-        var occIdx = occupancy.indexOf(occText);
-        var desc = `<b>${v.id}</b><br>Route: ${v.route}<br>Plate: ${v.plate}<br>Occupancy: ${v.occupancy}<br>Speed: ${v.speed}`;
-        var marker = L.circle(latlng, { radius: 20, desc: desc });
-        marker.route_long_name = v.route;
-        marker.occupancy_status = occIdx === -1 ? 0 : occIdx;
-        marker.speed = v.speed;
-        marker.route_type = 3;
-        marker.bindTooltip(desc);
-        updateMarkerColour(marker);
-        marker.addTo(regionLayers["Waikato"]);
-        markers["Waikato"][v.id] = marker;
-      });
-      updateSearchLayer();
-    });
-  }
-
-  // === LOOPING REFRESH ===
-  function refreshAll() {
-    fetchAuckland();
-    fetchWellington();
-    fetchChristchurch();
-    fetchWaikato();
-  }
-
-  refreshAll();
-  setInterval(refreshAll, 30000); // refresh every 30s
-
-</script>
+                    marker.addTo(layer);
+                    marker.speed = Math.round(v.position.speed);
+                    marker.bindTooltip(`${desc}
+                        Speed: ${marker.speed} km/h<br>
+                        Occupancy: ${occupancy[v.occupancy_status]}<br>
+                        License plate: ${v.vehicle.license_plate}
+                    `);
+                    marker.occupancy_status = v.occupancy_status;
+                    updateMarkerColour(marker);
+                }
+            })
+            .catch(err => {
+                map.spin(false);
+                console.error(err);
+                $("#status").text("Error loading vehicle locations.");
+            });
+        }
+        setInterval(loop, 10000);
+    </script>
 </body>
 </html>
