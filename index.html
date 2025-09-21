@@ -66,31 +66,101 @@
 
   // Auckland
   function fetchAuckland() {
-    fetch('https://api.at.govt.nz/realtime/legacy/vehiclelocations', {
-      headers: { 'Ocp-Apim-Subscription-Key': AT_KEY }
-    })
-    .then(res => res.json())
-    .then(data => {
-      regionLayers["Auckland"].clearLayers();
-      markers["Auckland"] = {};
-      (data.response.entity || []).forEach(entity => {
-        var latlng = [entity.vehicle.position.latitude, entity.vehicle.position.longitude];
-        var occText = (entity.vehicle.occupancy_status || "unknown").toLowerCase();
-        var occIdx = occupancy.indexOf(occText);
-        var desc = `<b>${entity.vehicle.vehicle.label}</b><br>Plate: ${entity.vehicle.vehicle.license_plate}<br>Occupancy: ${entity.vehicle.occupancy_status || "unknown"}<br>Speed: ${entity.vehicle.position.speed}`;
-        var marker = L.circle(latlng, { radius: 20, desc: desc });
-        marker.route_long_name = entity.vehicle.trip.route_id;
-        marker.occupancy_status = occIdx === -1 ? 0 : occIdx;
-        marker.speed = entity.vehicle.position.speed;
-        marker.route_type = 3;
-        marker.bindTooltip(desc);
-        updateMarkerColour(marker);
-        marker.addTo(regionLayers["Auckland"]);
-        markers["Auckland"][entity.vehicle.vehicle.id] = marker;
-      });
-      updateSearchLayer();
-    });
-  }
+    map.spin(true);
+        fetch('https://api.at.govt.nz/gtfs/v3/routes', {
+            method: 'GET',
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+            }
+        })
+        .then(response => response.json())
+        .then(response => {
+            map.spin(false);
+            if (response.message) {
+                console.error(response);
+                $("#status").text(`Error getting routes: ${response.message}`);
+            } else {
+                for (var r of response.data) {
+                    if (r.attributes.route_type == 712) r.attributes.route_type = 3;
+                    routes[r.id] = r.attributes;
+                }
+            }
+            loop();
+        })
+        .catch(err => {
+            map.spin(false);
+            console.error(err);
+            $("#status").text("Error loading routes.");
+        });
+
+        function loop() {
+            if (hasLoaded && !document.hasFocus()) {
+                console.log("tab unfocused, skipping");
+                return;
+            }
+            hasLoaded = true;
+
+            fetch('https://api.at.govt.nz/realtime/legacy/vehiclelocations', {
+                method: 'GET',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                map.spin(false);
+                for (var i in data.response.entity) {
+                    var id = data.response.entity[i].id;
+                    var v = data.response.entity[i].vehicle;
+                    var desc = `<b>${v.vehicle.label}</b><br>`;
+                    var layer = layers[null];
+                    var marker = markers[id];
+                    if (marker) {
+                        marker.setLatLng([v.position.latitude, v.position.longitude]);
+                    } else {
+                        marker = L.circle([v.position.latitude, v.position.longitude], { radius: 20, desc: desc });
+                        markers[id] = marker;
+                        marker.on("tooltipopen", function (e) {
+                            if (e.target.trip) {
+                                fetch('https://api.at.govt.nz/gtfs/v3/trips/' + e.target.trip.trip_id, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Cache-Control': 'no-cache',
+                                        'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(response => {
+                                    if (response.message) {
+                                        console.error(response.message);
+                                        $("#status").text(`Error getting trip: ${response.message}`);
+                                    } else {
+                                        $("#headsign").text(response.data.attributes.trip_headsign);
+                                    }
+                                })
+                                .catch(err => console.error(err));
+                            }
+                        });
+                    }
+                    if (v.trip) {
+                        var r = routes[v.trip.route_id];
+                        marker.trip = v.trip;
+                        if (r) {
+                            desc += `Agency: ${r.agency_id}<br>Route: ${r.route_long_name}<br>Headsign: <div id="headsign"></div>`;
+                            marker.options.desc = desc;
+                            marker.route_long_name = r.route_long_name;
+                            marker.route_type = r.route_type;
+                            layer = layers[r.route_type];
+                            if (!layer) {
+                                console.error(r);
+                                layer = layers[null];
+                            }
+                        } else {
+                            layer = layers[null];
+                        }
+                    }
 
   // Wellington
   function fetchWellington() {
