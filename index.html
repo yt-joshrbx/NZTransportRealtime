@@ -142,9 +142,9 @@
         });
 
         var overlayMaps = {
-            "AT Buses": layers[3],
-            "AT Trains": layers[2],
-            "AT Ferries": layers[4],
+            "Buses": layers[3],
+            "Trains": layers[2],
+            "Ferries": layers[4],
             "Out of Service": layers[null]
         };
 
@@ -345,21 +345,16 @@
                         markers[id] = marker;
                         marker.on("tooltipopen", function (e) {
                             if (e.target.trip) {
-                                fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb' + e.target.trip.trip_id, {
+                                fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb' {
                                     method: 'GET',
                                     headers: {
                                         'Cache-Control': 'no-cache',
                                         'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
-                                    }
+                                            }
                                 })
-                                .then(response => response.json())
                                 .then(response => {
-                                    if (response.message) {
-                                        console.error(response.message);
-                                        $("#status").text(`Error getting trip: ${response.message}`);
-                                    } else {
-                                        $("#headsign").text(response.data.attributes.trip_headsign);
-                                    }
+                                    console.log(response.status);
+                                    console.log(response.text());
                                 })
                                 .catch(err => console.error(err));
                             }
