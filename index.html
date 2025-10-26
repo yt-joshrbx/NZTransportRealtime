@@ -90,27 +90,7 @@
     <h1 id="title">Welcome to the NZ Transit Realtime Map!</h1>
     <div id="map"></div>
 
-    <!-- 🟢 Added API reference panel -->
-    <div id="api-panel">
-        <div id="api-header">Other NZ Transit APIs ▼</div>
-        <div id="api-links">
-            <a href="https://apidevelopers.metroinfo.co.nz/apis" target="_blank" rel="noopener">MetroInfo Developer Portal</a>
-            <a href="https://opendata.metlink.org.nz/apis/phwcr53xke" target="_blank" rel="noopener">Metlink Open Data APIs</a>
-            <a href="https://busit.github.io/index.html" target="_blank" rel="noopener">BusIt Developer Portal</a>
-        </div>
-    </div>
-
     <script>
-        // Toggle API Panel visibility
-        document.getElementById("api-header").addEventListener("click", function() {
-            const links = document.getElementById("api-links");
-            const isVisible = links.style.display === "block";
-            links.style.display = isVisible ? "none" : "block";
-            this.textContent = isVisible ? "Other NZ Transit APIs ▼" : "Other NZ Transit APIs ▲";
-        });
-    </script>
-        <script>
-        // existing JS continues unchanged...
         var map = L.map('map', {
             center: [-36.8862, 174.7651],
             zoom: 12,
@@ -130,6 +110,9 @@
             "Wikimedia": L.tileLayer.provider("Wikimedia")
         };
         map.attributionControl.addAttribution("© <a href='https://dev-portal.at.govt.nz/'>AT</a>");
+        map.attributionControl.addAttribution("© <a href='https://apidevelopers.metroinfo.co.nz/apis'>MetroInfo</a>");
+        map.attributionControl.addAttribution("© <a href='https://opendata.metlink.org.nz/apis/phwcr53xke'>Metlink</a>");
+        map.attributionControl.addAttribution("© <a href='https://busit.github.io/index.html'>BusIt</a>");
 
         var layers = {
             2: L.layerGroup().addTo(map),
