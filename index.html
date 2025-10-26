@@ -251,6 +251,77 @@
                     'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
                 }
             })
+            .then(response => response.json())
+            .then(data => {
+                map.spin(false);
+                for (var i in data.response.entity) {
+                    var id = data.response.entity[i].id;
+                    var v = data.response.entity[i].vehicle;
+                    var desc = `<b>${v.vehicle.label}</b><br>`;
+                    var layer = layers[null];
+                    var marker = markers[id];
+                    if (marker) {
+                        marker.setLatLng([v.position.latitude, v.position.longitude]);
+                    } else {
+                        marker = L.circle([v.position.latitude, v.position.longitude], { radius: 40, desc: desc });
+                        markers[id] = marker;
+                        marker.on("tooltipopen", function (e) {
+                            if (e.target.trip) {
+                                fetch('https://api.at.govt.nz/gtfs/v3/trips/' + e.target.trip.trip_id, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Cache-Control': 'no-cache',
+                                        'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                                    }
+                                })
+                                .then(response => response.json())
+                                .then(response => {
+                                    if (response.message) {
+                                        console.error(response.message);
+                                        $("#status").text(`Error getting trip: ${response.message}`);
+                                    } else {
+                                        $("#headsign").text(response.data.attributes.trip_headsign);
+                                    }
+                                })
+                                .catch(err => console.error(err));
+                            }
+                        });
+                    }
+                    if (v.trip) {
+                        var r = routes[v.trip.route_id];
+                        marker.trip = v.trip;
+                        if (r) {
+                            desc += `Agency: ${r.agency_id}<br>Route: ${r.route_long_name}<br>Headsign: <div id="headsign"></div>`;
+                            marker.options.desc = desc;
+                            marker.route_long_name = r.route_long_name;
+                            marker.route_type = r.route_type;
+                            layer = layers[r.route_type];
+                            if (!layer) {
+                                console.error(r);
+                                layer = layers[null];
+                            }
+                        } else {
+                            layer = layers[null];
+                        }
+                    }
+                    marker.addTo(layer);
+                    marker.speed = Math.round(v.position.speed);
+                    marker.bindTooltip(`${desc}
+                        Speed: ${marker.speed} km/h<br>
+                        Occupancy: ${occupancy[v.occupancy_status]}<br>
+                        License plate: ${v.vehicle.license_plate}
+                    `);
+                    marker.occupancy_status = v.occupancy_status;
+                    updateMarkerColour(marker);
+                }
+            })
+            .catch(err => {
+                map.spin(false);
+                console.error(err);
+                $("#status").text("Error loading vehicle locations.");
+            });
+        }
+        setInterval(loop, 10000);
             fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb', {
                 method: 'GET',
                 headers: {
@@ -274,11 +345,11 @@
                         markers[id] = marker;
                         marker.on("tooltipopen", function (e) {
                             if (e.target.trip) {
-                                fetch('https://api.at.govt.nz/gtfs/v3/trips/' + e.target.trip.trip_id, {
+                                fetch('https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb' + e.target.trip.trip_id, {
                                     method: 'GET',
                                     headers: {
                                         'Cache-Control': 'no-cache',
-                                        'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
+                                        'Ocp-Apim-Subscription-Key': '70bec02cbae84bbfa29b4e906a2035d4',
                                     }
                                 })
                                 .then(response => response.json())
