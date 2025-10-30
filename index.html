@@ -41,13 +41,6 @@
             margin-top: 8px;
         }
     </style>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-77710107-12"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'UA-77710107-12');
-    </script>
 </head>
 <body>
     <h1 id="title">Welcome to the Auckland Transport Transit Realtime Map!</h1>
@@ -90,7 +83,6 @@
         });
         map.addControl(search);
 
-        // Use event delegation for .search-input which is dynamically inserted by Leaflet Search
         $(document).on("keyup", ".search-input", function () {
             var searchVal = this.value.toLowerCase();
             for (var i in markers) {
@@ -173,15 +165,12 @@
         var hasLoaded = false;
         var routes = {};
 
-        // Helper: safe id for building per-marker DOM ids inside tooltip
         function safeId(input) {
             if (input === null || input === undefined) return "id";
             return String(input).replace(/[^a-zA-Z0-9_\-]/g, "_");
         }
 
-        // Display helper text for bike_allowed / bikes_allowed
         function bikeText(val) {
-            // GTFS: 0 = unknown, 1 = allowed, 2 = not allowed
             if (val === null || val === undefined) return "Unknown";
             var n = parseInt(val, 10);
             if (isNaN(n)) return String(val);
@@ -190,9 +179,7 @@
             return "Unknown";
         }
 
-        // Display helper for wheelchair/accessibility
         function accessibilityText(val) {
-            // GTFS: 0 = unknown, 1 = accessible, 2 = not accessible
             if (val === null || val === undefined) return "Unknown";
             var n = parseInt(val, 10);
             if (isNaN(n)) return String(val);
@@ -202,31 +189,28 @@
         }
 
         // === Route pattern (ArcGIS) support ===
-        // We'll fetch bus-route as GeoJSON and build lookup maps to show patterns for GTFS routes.
-        var routePatternsGeo = null;              // full GeoJSON
-        var routePatternIndex = {};               // normalizedKey -> array of features
-        var routePatternNumbersIndex = {};        // normalizedKey -> array of numeric pattern identifiers (strings)
+        var routePatternsGeo = null;
+        var routePatternIndex = {};
+        var routePatternNumbersIndex = {};
+        var routePatternNamesIndex = {};
         var patternLayerGroup = L.layerGroup().addTo(map);
-        var showPatternOnClick = true;            // toggle behavior
+        var showPatternOnClick = true;
 
         function normalizeKey(s) {
             if (s === null || s === undefined) return "";
             return String(s).toLowerCase().trim();
         }
 
-        // Try to match GTFS route id to ArcGIS feature. GTFS route '101-202' -> try exact, then prefix '101'
         function candidateKeysForGtfsRoute(gtfsRouteId) {
             if (!gtfsRouteId) return [];
             var keys = [];
             var raw = normalizeKey(gtfsRouteId);
             keys.push(raw);
-            // split on non-alphanumeric to get base number (e.g., "101-202" -> "101")
             var first = raw.split(/[^0-9a-z]+/)[0];
             if (first && keys.indexOf(first) === -1) keys.push(first);
             return keys;
         }
 
-        // Add a button to toggle showing route patterns when clicking markers
         var patternToggleControl = L.control({ position: 'topright' });
         patternToggleControl.onAdd = function () {
             var div = L.DomUtil.create('div', 'info');
@@ -239,15 +223,11 @@
             if (!showPatternOnClick) patternLayerGroup.clearLayers();
         });
 
-        // Try a couple of common GeoJSON endpoints for the ArcGIS open dataset
         function fetchRoutePatterns() {
-            // First attempt: standard ArcGIS Open Data + .geojson suffix
             var urls = [
                 'https://data-atgis.opendata.arcgis.com/datasets/ATgis::bus-route.geojson',
-                // fallback via ArcGIS REST query returning GeoJSON — replace the service url if you have the canonical one
                 'https://services.arcgis.com/ZN3Gq8hGnsb8aD0T/ArcGIS/rest/services/bus_route/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
             ];
-            // attempt sequentially until one succeeds
             (function tryNext(i) {
                 if (i >= urls.length) {
                     console.warn("Could not fetch route patterns from known endpoints.");
@@ -272,35 +252,28 @@
             })(0);
         }
 
-        // Extract numeric pattern identifiers (digits) from a feature properties object.
-        // Returns an array of string numbers (unique).
         function extractPatternNumbersFromProps(p) {
             if (!p) return [];
             var nums = [];
             Object.keys(p).forEach(function (key) {
                 var val = p[key];
                 if (val === null || val === undefined) return;
-                // convert to string and find numeric groups (1-6 digits)
                 var s = String(val);
-                // common property names that are likely a pattern id (prefer these)
                 var lname = key.toLowerCase();
-                if (lname.includes('pattern') || lname.includes('patno') || lname.includes('pat_id') || lname.includes('rtno') || lname.includes('rtno') || lname.includes('route_no') || lname.includes('rteno') || lname.includes('routeid') || lname.includes('route_no')) {
+                if (lname.includes('pattern') || lname.includes('patno') || lname.includes('pat_id') || lname.includes('rteno') || lname.includes('route_no') || lname.includes('rteno') || lname.includes('routeid')) {
                     var m = s.match(/\d{1,6}/g);
                     if (m) nums = nums.concat(m);
                 } else {
-                    // fallback: still look for numeric tokens in any string value
-                    var m2 = s.match(/\d{2,6}/g); // require at least 2 digits to reduce false positives
+                    var m2 = s.match(/\d{2,6}/g);
                     if (m2) nums = nums.concat(m2);
                 }
             });
-            // unique and return
             nums = nums.map(n => String(n));
             return nums.filter((v, idx, arr) => arr.indexOf(v) === idx);
         }
 
         function extractPatternNameFromProps(p) {
             if (!p) return null;
-            // common property names that may contain a human-friendly pattern name
             var candidates = [
                 p.pattern_name, p.pattern, p.PATTERN, p.Pattern, p.name, p.NAME,
                 p.route_pattern, p.RoutePattern, p.DESC, p.DESCRIPTION, p.Descriptn,
@@ -312,7 +285,6 @@
                 var s = String(v).trim();
                 if (s.length > 0 && s.toLowerCase() !== 'null') return s;
             }
-            // fallback: use any property that looks useful (short alphanumeric)
             for (var key in p) {
                 if (!p.hasOwnProperty(key)) continue;
                 var val = p[key];
@@ -326,19 +298,16 @@
         function indexRoutePatterns(geojson) {
             routePatternIndex = {};
             routePatternNumbersIndex = {};
+            routePatternNamesIndex = {};
             geojson.features.forEach(function (f) {
                 var p = f.properties || {};
-                // Candidate property names that might contain route number/identifier in the dataset.
                 var candidates = [
                     p.route_no, p.ROUTE_NO, p.RouteNo, p.route, p.route_id, p.routeid,
                     p.route_number, p.Route, p.RouteID, p.RTENO, p.ROUTE
                 ];
-                // pattern name (human-readable) - kept for backward compatibility if needed
                 var patternName = extractPatternNameFromProps(p);
-                // numeric identifiers
                 var patternNums = extractPatternNumbersFromProps(p);
 
-                // flatten and normalize
                 candidates.forEach(function (c) {
                     if (c === undefined || c === null) return;
                     var k = normalizeKey(c);
@@ -350,14 +319,16 @@
                         if (!routePatternNumbersIndex[k]) routePatternNumbersIndex[k] = [];
                         routePatternNumbersIndex[k] = routePatternNumbersIndex[k].concat(patternNums);
                     }
+                    if (patternName) {
+                        if (!routePatternNamesIndex[k]) routePatternNamesIndex[k] = [];
+                        routePatternNamesIndex[k].push(patternName);
+                    }
                 });
 
-                // also index by any "route-like" value found elsewhere in properties (robust fallback)
                 Object.keys(p).forEach(function (key) {
                     var val = p[key];
                     if (!val) return;
                     var k = normalizeKey(val);
-                    // if value looks like a short number (1-6 chars) or includes digits and letters, index it.
                     if (k && k.length <= 6) {
                         if (!routePatternIndex[k]) routePatternIndex[k] = [];
                         routePatternIndex[k].push(f);
@@ -366,29 +337,34 @@
                             if (!routePatternNumbersIndex[k]) routePatternNumbersIndex[k] = [];
                             routePatternNumbersIndex[k] = routePatternNumbersIndex[k].concat(patternNums);
                         } else {
-                            // also try to use the normalized key itself if it's numeric
                             var m = k.match(/^\d{1,6}$/);
                             if (m) {
                                 if (!routePatternNumbersIndex[k]) routePatternNumbersIndex[k] = [];
                                 routePatternNumbersIndex[k].push(k);
                             }
                         }
+
+                        if (patternName) {
+                            if (!routePatternNamesIndex[k]) routePatternNamesIndex[k] = [];
+                            routePatternNamesIndex[k].push(patternName);
+                        }
                     }
                 });
             });
-            // reduce duplicates in each bucket
+
             Object.keys(routePatternIndex).forEach(function (k) {
                 routePatternIndex[k] = routePatternIndex[k].filter((v, idx, arr) => arr.indexOf(v) === idx);
             });
             Object.keys(routePatternNumbersIndex).forEach(function (k) {
                 routePatternNumbersIndex[k] = routePatternNumbersIndex[k].filter((v, idx, arr) => arr.indexOf(v) === idx);
             });
+            Object.keys(routePatternNamesIndex).forEach(function (k) {
+                routePatternNamesIndex[k] = routePatternNamesIndex[k].filter((v, idx, arr) => arr.indexOf(v) === idx);
+            });
 
-            // After building the index, update any existing markers so they show pattern numbers next to route name
             updateMarkersWithPatterns();
         }
 
-        // Return unique array of pattern numbers (strings) for a GTFS route id
         function getPatternNumbersForGtfsRoute(gtfsRouteId) {
             if (!gtfsRouteId) return [];
             var keys = candidateKeysForGtfsRoute(gtfsRouteId);
@@ -398,12 +374,49 @@
             });
             var kfull = normalizeKey(gtfsRouteId);
             if (routePatternNumbersIndex[kfull]) matched = matched.concat(routePatternNumbersIndex[kfull]);
-            // dedupe and keep as strings
             matched = matched.map(String).filter((v, idx, arr) => arr.indexOf(v) === idx);
             return matched;
         }
 
-        // Update existing markers' desc and tooltip to include pattern numbers (if any)
+        function getPatternNamesForGtfsRoute(gtfsRouteId) {
+            if (!gtfsRouteId) return [];
+            var keys = candidateKeysForGtfsRoute(gtfsRouteId);
+            var matched = [];
+            keys.forEach(function (k) {
+                if (routePatternNamesIndex[k]) matched = matched.concat(routePatternNamesIndex[k]);
+            });
+            var kfull = normalizeKey(gtfsRouteId);
+            if (routePatternNamesIndex[kfull]) matched = matched.concat(routePatternNamesIndex[kfull]);
+            matched = matched.filter((v, idx, arr) => arr.indexOf(v) === idx);
+            return matched;
+        }
+
+        function tokens(s) {
+            if (!s) return [];
+            return normalizeKey(s).split(/\W+/).filter(Boolean);
+        }
+
+        // Decide if a feature's pattern name seems to match the headsign text.
+        function patternMatchesHeadsign(feature, headsign) {
+            if (!headsign) return true; // no headsign to match -> treat as match
+            var pName = extractPatternNameFromProps(feature.properties) || "";
+            var hn = normalizeKey(headsign);
+            var pn = normalizeKey(pName);
+            if (!pn) return false;
+            if (pn.includes(hn) || hn.includes(pn)) return true;
+            var tpn = tokens(pName);
+            var thn = tokens(headsign);
+            // If they share a token of length >=3, treat as match
+            for (var i = 0; i < tpn.length; i++) {
+                if (tpn[i].length < 3) continue;
+                for (var j = 0; j < thn.length; j++) {
+                    if (thn[j].length < 3) continue;
+                    if (tpn[i] === thn[j]) return true;
+                }
+            }
+            return false;
+        }
+
         function updateMarkersWithPatterns() {
             Object.keys(markers).forEach(function (mid) {
                 var m = markers[mid];
@@ -413,15 +426,37 @@
                 var r = routes[rid];
                 var sid = safeId(m._entityId || mid);
                 var descBase = `<b>${(m.options && m.options.desc) ? (m.options.desc.split('<br>')[0] || '') : ('id ' + mid)}</b><br>`;
-                // if route info present, rebuild desc to include pattern numbers
                 if (r) {
-                    var patternNums = getPatternNumbersForGtfsRoute(rid);
-                    var patternText = patternNums && patternNums.length ? ` (${patternNums.join(' / ')})` : '';
-                    descBase = `<b>${(m.options && m.options.desc) ? (m.options.desc.split('<br>')[0] || '') : ('id ' + mid)}</b><br>`;
+                    // if marker has headsign, prefer pattern numbers/names that match it
+                    var patternNums = [];
+                    var createText = function(patternNumsList) {
+                        return patternNumsList && patternNumsList.length ? ` (${patternNumsList.join(' / ')})` : '';
+                    };
+                    if (m.headsign) {
+                        // get all features for this route, filter by headsign, then extract numbers
+                        var keys = candidateKeysForGtfsRoute(rid);
+                        var feats = [];
+                        keys.forEach(function (k) {
+                            if (routePatternIndex[k]) feats = feats.concat(routePatternIndex[k]);
+                        });
+                        var kfull = normalizeKey(rid);
+                        if (routePatternIndex[kfull]) feats = feats.concat(routePatternIndex[kfull]);
+                        feats = feats.filter((v, idx, arr) => arr.indexOf(v) === idx);
+                        var matchedNums = [];
+                        feats.forEach(function(f) {
+                            if (patternMatchesHeadsign(f, m.headsign)) {
+                                matchedNums = matchedNums.concat(extractPatternNumbersFromProps(f.properties));
+                            }
+                        });
+                        matchedNums = matchedNums.map(String).filter((v, idx, arr) => arr.indexOf(v) === idx);
+                        patternNums = matchedNums.length ? matchedNums : getPatternNumbersForGtfsRoute(rid);
+                    } else {
+                        patternNums = getPatternNumbersForGtfsRoute(rid);
+                    }
+                    var patternText = createText(patternNums);
                     descBase += `Agency: ${r.agency_id}<br>Route: ${r.route_long_name}${patternText}<br>Headsign: <div id="headsign-${sid}"></div>`;
                     m.options.desc = descBase;
                 }
-                // rebuild tooltip HTML (preserve speed/occupancy etc)
                 var speed = m.speed || 0;
                 var occ = m.occupancy_status;
                 var bike = m.bikes_allowed;
@@ -445,14 +480,11 @@
                 try {
                     m.unbindTooltip && m.unbindTooltip();
                     m.bindTooltip && m.bindTooltip(tooltipHtml);
-                } catch (e) {
-                    // ignore
-                }
+                } catch (e) {}
             });
         }
 
-        // Show route pattern(s) matching a GTFS route id
-        function showRoutePatternForGtfsRoute(gtfsRouteId, options) {
+        function showRoutePatternForGtfsRoute(gtfsRouteId, options, headsign) {
             patternLayerGroup.clearLayers();
             if (!routePatternIndex || Object.keys(routePatternIndex).length === 0) {
                 $("#status").text("Route pattern data not loaded.");
@@ -463,19 +495,22 @@
             keys.forEach(function (k) {
                 if (routePatternIndex[k]) matched = matched.concat(routePatternIndex[k]);
             });
-            // As a last resort try direct normalized full id
             var kfull = normalizeKey(gtfsRouteId);
             if (routePatternIndex[kfull]) matched = matched.concat(routePatternIndex[kfull]);
-
-            // unique
             matched = matched.filter((v, idx, arr) => arr.indexOf(v) === idx);
 
+            // Filter matched features by headsign (only show the pattern(s) that match the headsign)
+            if (headsign) {
+                matched = matched.filter(function (f) {
+                    return patternMatchesHeadsign(f, headsign);
+                });
+            }
+
             if (matched.length === 0) {
-                $("#status").text(`No pattern found for ${gtfsRouteId}`);
+                $("#status").text(`No pattern found for ${gtfsRouteId} matching "${headsign || ''}"`);
                 return;
             }
 
-            // style each matched feature and add to group
             matched.forEach(function (f) {
                 var style = {
                     color: options && options.color ? options.color : '#3388ff',
@@ -486,19 +521,15 @@
                 patternLayerGroup.addLayer(gj);
             });
 
-            // fit map to the pattern bounds (if desired)
             try {
                 var b = patternLayerGroup.getBounds();
                 if (b && b.isValid()) {
                     map.fitBounds(b.pad(0.25));
                 }
-            } catch (e) {
-                // ignore
-            }
-            $("#status").text(`Showing ${matched.length} pattern(s) for ${gtfsRouteId}`);
+            } catch (e) {}
+            $("#status").text(`Showing ${matched.length} pattern(s) for ${gtfsRouteId}` + (headsign ? ` matching "${headsign}"` : ''));
         }
 
-        // fetch patterns now
         fetchRoutePatterns();
 
         // === existing GTFS / realtime code ===
@@ -550,7 +581,6 @@
             .then(data => {
                 map.spin(false);
 
-                // data.response.entity is expected; guard if not present
                 if (!data || !data.response || !Array.isArray(data.response.entity)) {
                     console.error("Unexpected vehiclelocations response", data);
                     $("#status").text("Unexpected vehicle data.");
@@ -561,31 +591,27 @@
                     if (!data.response.entity.hasOwnProperty(i)) continue;
                     var ent = data.response.entity[i];
                     var id = ent.id;
-                    var v = ent.vehicle; // note: this object contains vehicle (info), position, trip, occupancy_status, etc.
+                    var v = ent.vehicle;
                     if (!v) continue;
 
-                    var vehicleInfo = v.vehicle || {}; // label, license_plate may be here
+                    var vehicleInfo = v.vehicle || {};
                     var label = vehicleInfo.label || ("id " + id);
                     var desc = `<b>${label}</b><br>`;
                     var layer = layers[null];
                     var marker = markers[id];
 
-                    // compute a safe id for DOM elements inside tooltip
                     var sid = safeId(id);
 
                     if (marker) {
-                        // update position
                         if (v.position && typeof v.position.latitude === "number" && typeof v.position.longitude === "number") {
                             marker.setLatLng([v.position.latitude, v.position.longitude]);
                         }
-                        // update description so search works
                         marker.options.desc = desc;
                     } else {
                         marker = L.circle([v.position.latitude || 0, v.position.longitude || 0], { radius: 40, desc: desc });
                         marker._entityId = id;
                         markers[id] = marker;
 
-                        // tooltipopen fetches trip details (headsings, bike/accessibility) and updates the per-marker elements
                         marker.on("tooltipopen", function (e) {
                             var target = e.target;
                             if (!target || !target.trip) return;
@@ -612,32 +638,57 @@
                                     $("#bike_allowed-" + eid).text(bikeText(bikeVal));
                                     var accVal = attrs.wheelchair_accessible ?? attrs.accessibility ?? attrs.wheelchair_access;
                                     $("#accessibility-" + eid).text(accessibilityText(accVal));
+
+                                    // store headsign on marker for later pattern-matching use
+                                    target.headsign = attrs.trip_headsign || "";
+                                    // update this marker's desc now that we know headsign
+                                    updateMarkersWithPatterns();
                                 }
                             })
                             .catch(err => console.error(err));
                         });
 
-                        // when marker is clicked show the route pattern (if available)
                         marker.on('click', function (e) {
                             if (!showPatternOnClick) return;
                             var mrk = e.target;
                             var rid = mrk.route_id || (mrk.trip && mrk.trip.route_id) || mrk.route_id_override;
+                            // try to obtain headsign from marker (set on tooltipopen or from trip object)
+                            var headsign = mrk.headsign || (mrk.trip && (mrk.trip.trip_headsign || mrk.trip.headsign)) || "";
                             if (rid) {
-                                showRoutePatternForGtfsRoute(rid, { color: stringToColour(mrk.route_long_name || rid) });
+                                showRoutePatternForGtfsRoute(rid, { color: stringToColour(mrk.route_long_name || rid) }, headsign);
                             } else {
                                 $("#status").text("No route id for this vehicle.");
                             }
                         });
                     }
 
-                    // populate route/trip-derived info
                     if (v.trip) {
                         var r = routes[v.trip.route_id];
                         marker.trip = v.trip;
-                        marker.route_id = v.trip.route_id; // store route id for pattern lookup
+                        marker.route_id = v.trip.route_id;
                         if (r) {
-                            // compute pattern numbers and append in brackets after the route long name
-                            var patternNums = getPatternNumbersForGtfsRoute(v.trip.route_id);
+                            var patternNums = [];
+                            if (marker.headsign) {
+                                // if headsign already available (unlikely before tooltipopen), prefer matching numbers
+                                var keys = candidateKeysForGtfsRoute(v.trip.route_id);
+                                var feats = [];
+                                keys.forEach(function (k) {
+                                    if (routePatternIndex[k]) feats = feats.concat(routePatternIndex[k]);
+                                });
+                                var kfull = normalizeKey(v.trip.route_id);
+                                if (routePatternIndex[kfull]) feats = feats.concat(routePatternIndex[kfull]);
+                                feats = feats.filter((v2, idx, arr) => arr.indexOf(v2) === idx);
+                                var matchedNums = [];
+                                feats.forEach(function(f) {
+                                    if (patternMatchesHeadsign(f, marker.headsign)) {
+                                        matchedNums = matchedNums.concat(extractPatternNumbersFromProps(f.properties));
+                                    }
+                                });
+                                matchedNums = matchedNums.map(String).filter((v2, idx, arr) => arr.indexOf(v2) === idx);
+                                patternNums = matchedNums.length ? matchedNums : getPatternNumbersForGtfsRoute(v.trip.route_id);
+                            } else {
+                                patternNums = getPatternNumbersForGtfsRoute(v.trip.route_id);
+                            }
                             var patternText = patternNums && patternNums.length ? ` (${patternNums.join(' / ')})` : '';
                             desc += `Agency: ${r.agency_id}<br>Route: ${r.route_long_name}${patternText}<br>Headsign: <div id="headsign-${sid}"></div>`;
                             marker.options.desc = desc;
@@ -652,13 +703,11 @@
                     marker.addTo(layer);
                     marker.speed = Math.round((v.position && v.position.speed) ? v.position.speed : 0);
 
-                    // Read bike allowed from multiple possible locations (vehicle-level, v-level, trip-level, attributes)
                     var bikeAllowed =
                         (v.bike_allowed ?? v.bikes_allowed) ??
                         (v.vehicle && (v.vehicle.bike_allowed ?? v.vehicle.bikes_allowed)) ??
                         (v.trip && (v.trip.bike_allowed ?? (v.trip.attributes && (v.trip.attributes.bike_allowed ?? v.trip.attributes.bikes_allowed))));
 
-                    // Read wheelchair/accessibility from multiple possible locations
                     var accessibility =
                         (v.wheelchair_accessible ?? v.accessibility) ??
                         (v.vehicle && (v.vehicle.wheelchair_accessible ?? v.vehicle.accessibility)) ??
@@ -667,7 +716,6 @@
                     marker.bikes_allowed = bikeAllowed;
                     marker.accessibility = accessibility;
 
-                    // Bind tooltip with unique element ids per marker to allow updates when trip fetch returns
                     var tooltipHtml = `${desc}
                         Speed: ${marker.speed} km/h<br>
                         Occupancy: ${occupancy[v.occupancy_status] || ""}<br>
@@ -688,6 +736,9 @@
             });
         }
         setInterval(loop, 10000);
+
+        // kick off initial fetch of patterns
+        fetchRoutePatterns();
     </script>
 </body>
 </html>
