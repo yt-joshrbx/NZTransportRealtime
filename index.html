@@ -46,6 +46,7 @@
     <h1 id="title">Welcome to the Auckland Transport Transit Realtime Map!</h1>
     <div id="map"></div>
     <script>
+        // Map setup
         var map = L.map('map', {
             center: [-36.8862, 174.7651],
             zoom: 12,
@@ -83,7 +84,7 @@
         });
         map.addControl(search);
 
-        // Use event delegation for .search-input which is dynamically inserted by Leaflet Search
+        // UI helpers
         $(document).on("keyup", ".search-input", function () {
             var searchVal = this.value.toLowerCase();
             for (var i in markers) {
@@ -195,10 +196,10 @@
         }
 
         // === Route pattern (ArcGIS) support ===
-        var routePatternsGeo = null;              // full GeoJSON
+        var routePatternsGeo = null;
         var routePatternIndex = {};               // normalizedKey -> array of features
-        var routePatternNumbersIndex = {};        // normalizedKey -> array of numeric pattern identifiers (strings)
-        var routePatternNamesIndex = {};
+        var routePatternNumbersIndex = {};        // normalizedKey -> array of numeric pattern ids
+        var routePatternNamesIndex = {};          // normalizedKey -> array of names
         var patternLayerGroup = L.layerGroup().addTo(map);
         var showPatternOnClick = true;
 
@@ -218,7 +219,7 @@
             return keys;
         }
 
-        // extract numeric pattern ids (digits) from properties
+        // Pattern extraction helpers
         function extractPatternNumbersFromProps(p) {
             if (!p) return [];
             var nums = [];
@@ -318,7 +319,7 @@
                     }
                 });
             });
-
+            // dedupe
             Object.keys(routePatternIndex).forEach(function (k) {
                 routePatternIndex[k] = routePatternIndex[k].filter((v, idx, arr) => arr.indexOf(v) === idx);
             });
@@ -329,9 +330,97 @@
                 routePatternNamesIndex[k] = routePatternNamesIndex[k].filter((v, idx, arr) => arr.indexOf(v) === idx);
             });
 
+            // update markers already present
             updateMarkersWithPatterns();
         }
 
+        // Convert ArcGIS FeatureServer JSON into GeoJSON FeatureCollection
+        function arcgisToGeoJSON(arcgisJson) {
+            var out = { type: "FeatureCollection", features: [] };
+            if (!arcgisJson || !Array.isArray(arcgisJson.features)) return out;
+            arcgisJson.features.forEach(function (f) {
+                var attrs = f.attributes || {};
+                var g = f.geometry || {};
+                if (g.paths && Array.isArray(g.paths)) {
+                    g.paths.forEach(function (path) {
+                        out.features.push({
+                            type: "Feature",
+                            properties: attrs,
+                            geometry: {
+                                type: "LineString",
+                                coordinates: path.map(function (pt) { return [pt[0], pt[1]]; })
+                            }
+                        });
+                    });
+                } else if (g.rings && Array.isArray(g.rings)) {
+                    out.features.push({
+                        type: "Feature",
+                        properties: attrs,
+                        geometry: {
+                            type: "Polygon",
+                            coordinates: g.rings.map(function (ring) {
+                                return ring.map(function (pt) { return [pt[0], pt[1]]; });
+                            })
+                        }
+                    });
+                } else if (g.x !== undefined && g.y !== undefined) {
+                    out.features.push({
+                        type: "Feature",
+                        properties: attrs,
+                        geometry: {
+                            type: "Point",
+                            coordinates: [g.x, g.y]
+                        }
+                    });
+                }
+            });
+            return out;
+        }
+
+        // Fetch patterns trying ArcGIS FeatureServer JSON first, then GeoJSON fallback
+        function fetchRoutePatterns() {
+            var urls = [
+                // user's provided API query (ArcGIS JSON)
+                'https://services2.arcgis.com/JkPEgZJGxhSjYOo0/arcgis/rest/services/BusService/FeatureServer/2/query?where=1%3D1&outFields=*&outSR=4326&f=json',
+                // open-data geojson fallback
+                'https://data-atgis.opendata.arcgis.com/datasets/ATgis::bus-route.geojson',
+                // another fallback
+                'https://services.arcgis.com/ZN3Gq8hGnsb8aD0T/ArcGIS/rest/services/bus_route/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
+            ];
+            (function tryNext(i) {
+                if (i >= urls.length) {
+                    console.warn("Could not fetch route patterns from known endpoints.");
+                    return;
+                }
+                var url = urls[i];
+                fetch(url)
+                    .then(r => {
+                        if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url);
+                        return r.json();
+                    })
+                    .then(body => {
+                        // detect ArcGIS REST JSON vs GeoJSON
+                        if (body && body.features && body.features.length && body.features[0].geometry === undefined && body.features[0].attributes !== undefined) {
+                            var geo = arcgisToGeoJSON(body);
+                            routePatternsGeo = geo;
+                            indexRoutePatterns(geo);
+                            console.log("Loaded and converted ArcGIS FeatureServer JSON from", url);
+                        } else if (body && body.type === "FeatureCollection" && Array.isArray(body.features)) {
+                            routePatternsGeo = body;
+                            indexRoutePatterns(body);
+                            console.log("Loaded GeoJSON route patterns from", url);
+                        } else {
+                            throw new Error("Unexpected response format from " + url);
+                        }
+                    })
+                    .catch(err => {
+                        console.warn("Failed to fetch/parse patterns from", url, err);
+                        tryNext(i + 1);
+                    });
+            })(0);
+        }
+
+        // Pattern lookup utilities
         function getPatternNumbersForGtfsRoute(gtfsRouteId) {
             if (!gtfsRouteId) return [];
             var keys = candidateKeysForGtfsRoute(gtfsRouteId);
@@ -354,9 +443,9 @@
             return extractPatternNameFromProps(feature.properties || {});
         }
 
-        // Decide if a feature's pattern name seems to match the headsign text.
+        // decide if a feature's pattern name seems to match the headsign text.
         function patternMatchesHeadsign(feature, headsign) {
-            if (!headsign) return true; // no headsign to match -> treat as match
+            if (!headsign) return true;
             var pName = extractPatternName(feature) || "";
             var hn = normalizeKey(headsign);
             var pn = normalizeKey(pName);
@@ -374,7 +463,6 @@
             return false;
         }
 
-        // get pattern numbers for a route filtered by headsign (returns array of numeric strings)
         function getPatternNumbersMatchingHeadsign(gtfsRouteId, headsign) {
             if (!gtfsRouteId) return [];
             var keys = candidateKeysForGtfsRoute(gtfsRouteId);
@@ -395,7 +483,7 @@
             return nums;
         }
 
-        // Update existing markers' desc & tooltip route pattern display (pattern numbers) using headsign when available
+        // Update markers with pattern numbers and rebuild tooltip content
         function updateMarkersWithPatterns() {
             Object.keys(markers).forEach(function (mid) {
                 var m = markers[mid];
@@ -417,41 +505,15 @@
                     desc += `Agency: ${r.agency_id}<br>Route: ${r.route_long_name}${patternText}<br>Headsign: <div id="headsign-${sid}"></div>`;
                     m.options.desc = desc;
 
-                    // If tooltip is open for this marker, update the route & pattern span too
+                    // If tooltip elements exist (open tooltip) update them
                     $("#routeLong-" + sid).text(r.route_long_name || "");
-                    $("#routePattern-" + sid).text(patternNums && patternNums.length ? ` (${patternNums.join(' / ')})` : "");
+                    $("#routePattern-" + sid).text(patternText);
                     $("#agency-" + sid).text(r.agency_id || "");
                 }
             });
         }
 
-        // fill tooltip DOM elements for a marker (safe to call repeatedly)
-        function updateTooltipFields(marker) {
-            try {
-                var sid = safeId(marker._entityId || marker.vehicle_id || '');
-                // only update if tooltip elements exist in DOM (they will when tooltip is open)
-                if ($("#vehicleid-" + sid).length) {
-                    $("#vehicleid-" + sid).text(marker.vehicle_id || '');
-                    $("#agency-" + sid).text((routes[marker.route_id] && routes[marker.route_id].agency_id) ? routes[marker.route_id].agency_id : '');
-                    $("#routeLong-" + sid).text((routes[marker.route_id] && routes[marker.route_id].route_long_name) ? routes[marker.route_id].route_long_name : '');
-                    // pattern numbers: prefer headsign-matching numbers if headsign available
-                    var pnums = [];
-                    if (marker.headsign) pnums = getPatternNumbersMatchingHeadsign(marker.route_id, marker.headsign);
-                    if (!pnums.length) pnums = getPatternNumbersForGtfsRoute(marker.route_id);
-                    $("#routePattern-" + sid).text(pnums && pnums.length ? ` (${pnums.join(' / ')})` : '');
-                    $("#headsign-" + sid).text(marker.headsign || (marker.trip && (marker.trip.trip_headsign || '')) || '');
-                    $("#speed-" + sid).text(marker.speed || 0);
-                    $("#occupancy-" + sid).text(occupancy[marker.occupancy_status] || "");
-                    $("#license-" + sid).text((marker.vehicleInfo && marker.vehicleInfo.license_plate) ? marker.vehicleInfo.license_plate : "");
-                    $("#bike_allowed-" + sid).text(bikeText(marker.bikes_allowed));
-                    $("#accessibility-" + sid).text(accessibilityText(marker.accessibility));
-                }
-            } catch (e) {
-                console.warn("updateTooltipFields error", e);
-            }
-        }
-
-        // when showing patterns, only show features that match headsign if provided
+        // Show patterns filtered by headsign when provided
         function showRoutePatternForGtfsRoute(gtfsRouteId, options, headsign) {
             patternLayerGroup.clearLayers();
             if (!routePatternIndex || Object.keys(routePatternIndex).length === 0) {
@@ -491,38 +553,10 @@
             $("#status").text(`Showing ${matched.length} pattern(s) for ${gtfsRouteId}` + (headsign ? ` matching "${headsign}"` : ''));
         }
 
-        // fetch patterns
-        function fetchRoutePatterns() {
-            var urls = [
-                'https://data-atgis.opendata.arcgis.com/datasets/ATgis::bus-route.geojson',
-                'https://services.arcgis.com/ZN3Gq8hGnsb8aD0T/ArcGIS/rest/services/bus_route/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson'
-            ];
-            (function tryNext(i) {
-                if (i >= urls.length) {
-                    console.warn("Could not fetch route patterns from known endpoints.");
-                    return;
-                }
-                var url = urls[i];
-                fetch(url).then(r => {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                }).then(geojson => {
-                    if (!geojson || !geojson.features) throw new Error("Not GeoJSON");
-                    routePatternsGeo = geojson;
-                    indexRoutePatterns(geojson);
-                    console.log("Loaded route pattern GeoJSON from", url);
-                }).catch(err => {
-                    console.warn("Failed to fetch patterns from", url, err);
-                    tryNext(i + 1);
-                });
-            })(0);
-        }
-
-        // kick off fetch patterns
+        // Kick off pattern fetch
         fetchRoutePatterns();
 
-        // === existing GTFS / realtime code ===
-
+        // === GTFS routes fetch and realtime loop ===
         map.spin(true);
         fetch('https://api.at.govt.nz/gtfs/v3/routes', {
             method: 'GET',
@@ -550,6 +584,29 @@
             console.error(err);
             $("#status").text("Error loading routes.");
         });
+
+        function updateTooltipFields(marker) {
+            try {
+                var sid = safeId(marker._entityId || marker.vehicle_id || '');
+                if ($("#vehicleid-" + sid).length) {
+                    $("#vehicleid-" + sid).text(marker.vehicle_id || '');
+                    $("#agency-" + sid).text((routes[marker.route_id] && routes[marker.route_id].agency_id) ? routes[marker.route_id].agency_id : '');
+                    $("#routeLong-" + sid).text((routes[marker.route_id] && routes[marker.route_id].route_long_name) ? routes[marker.route_id].route_long_name : '');
+                    var pnums = [];
+                    if (marker.headsign) pnums = getPatternNumbersMatchingHeadsign(marker.route_id, marker.headsign);
+                    if (!pnums.length) pnums = getPatternNumbersForGtfsRoute(marker.route_id);
+                    $("#routePattern-" + sid).text(pnums && pnums.length ? ` (${pnums.join(' / ')})` : '');
+                    $("#headsign-" + sid).text(marker.headsign || (marker.trip && (marker.trip.trip_headsign || '')) || '');
+                    $("#speed-" + sid).text(marker.speed || 0);
+                    $("#occupancy-" + sid).text(occupancy[marker.occupancy_status] || "");
+                    $("#license-" + sid).text((marker.vehicleInfo && marker.vehicleInfo.license_plate) ? marker.vehicleInfo.license_plate : "");
+                    $("#bike_allowed-" + sid).text(bikeText(marker.bikes_allowed));
+                    $("#accessibility-" + sid).text(accessibilityText(marker.accessibility));
+                }
+            } catch (e) {
+                console.warn("updateTooltipFields error", e);
+            }
+        }
 
         function loop() {
             if (hasLoaded && !document.hasFocus()) {
@@ -583,7 +640,7 @@
                     var v = ent.vehicle;
                     if (!v) continue;
 
-                    var vehicleInfo = v.vehicle || {}; // may contain label, license_plate
+                    var vehicleInfo = v.vehicle || {};
                     var label = vehicleInfo.label || ("id " + id);
                     var desc = `<b>${label}</b><br>`;
                     var layer = layers[null];
@@ -592,7 +649,6 @@
                     var sid = safeId(id);
 
                     if (marker) {
-                        // update position & desc
                         if (v.position && typeof v.position.latitude === "number" && typeof v.position.longitude === "number") {
                             marker.setLatLng([v.position.latitude, v.position.longitude]);
                         }
@@ -605,11 +661,9 @@
                         marker.vehicleInfo = vehicleInfo;
                         markers[id] = marker;
 
-                        // when tooltip opens we populate fields and fetch trip details if needed
                         marker.on("tooltipopen", function (e) {
                             var target = e.target;
                             var sid_local = safeId(target._entityId || target.vehicle_id || '');
-                            // populate immediate known fields
                             updateTooltipFields(target);
 
                             if (!target.trip) return;
@@ -622,25 +676,34 @@
                                     'Cache-Control': 'no-cache',
                                     'Ocp-Apim-Subscription-Key': 'b122c467e7e145b7bfcd6d854d09b01b',
                                 }
-                            }).then(resp => resp.json()).then(respJson => {
+                            })
+                            .then(resp => resp.json())
+                            .then(respJson => {
                                 if (respJson.message) {
                                     console.error(respJson.message);
                                     $("#status").text(`Error getting trip: ${respJson.message}`);
                                 } else if (respJson.data && respJson.data.attributes) {
                                     var attrs = respJson.data.attributes;
-                                    // store useful fields on marker
+                                    var eid = safeId(target._entityId);
+                                    $("#headsign-" + eid).text(attrs.trip_headsign || "");
+                                    var bikeVal = attrs.bike_allowed ?? attrs.bikes_allowed ?? attrs.bikes_allowed;
+                                    $("#bike_allowed-" + eid).text(bikeText(bikeVal));
+                                    var accVal = attrs.wheelchair_accessible ?? attrs.accessibility ?? attrs.wheelchair_access;
+                                    $("#accessibility-" + eid).text(accessibilityText(accVal));
+
+                                    // store headsign and bike/access on marker
                                     target.headsign = attrs.trip_headsign || "";
-                                    // bikes/accessibility may be in plural or singular
-                                    target.bikes_allowed = attrs.bikes_allowed ?? attrs.bike_allowed ?? target.bikes_allowed;
-                                    target.accessibility = attrs.wheelchair_accessible ?? attrs.accessibility ?? target.accessibility;
-                                    // now update tooltip fields and patterns (uses headsign)
+                                    target.bikes_allowed = bikeVal ?? target.bikes_allowed;
+                                    target.accessibility = accVal ?? target.accessibility;
+
+                                    // update tooltip & patterns
                                     updateTooltipFields(target);
                                     updateMarkersWithPatterns();
                                 }
-                            }).catch(err => console.error(err));
+                            })
+                            .catch(err => console.error(err));
                         });
 
-                        // clicking a marker will draw the specific pattern that matches headsign (if available)
                         marker.on('click', function (e) {
                             if (!showPatternOnClick) return;
                             var mrk = e.target;
@@ -655,11 +718,10 @@
                     if (v.trip) {
                         var r = routes[v.trip.route_id];
                         marker.trip = v.trip;
-                        marker.route_id = v.trip.route_id; // store for pattern lookup
+                        marker.route_id = v.trip.route_id; // store route id for pattern lookup
                         if (r) {
                             marker.route_long_name = r.route_long_name;
                             marker.route_type = r.route_type;
-                            // pattern numbers: prefer matching to headsign if already present on marker
                             var patternNums = [];
                             if (marker.headsign) {
                                 patternNums = getPatternNumbersMatchingHeadsign(v.trip.route_id, marker.headsign);
@@ -684,6 +746,7 @@
                         (v.bikes_allowed ?? v.bike_allowed) ??
                         (v.vehicle && (v.vehicle.bikes_allowed ?? v.vehicle.bike_allowed)) ??
                         (v.trip && (v.trip.bikes_allowed ?? (v.trip.attributes && (v.trip.attributes.bikes_allowed ?? v.trip.attributes.bike_allowed))));
+
                     // Read wheelchair/accessibility
                     var accessibility =
                         (v.wheelchair_accessible ?? v.accessibility) ??
@@ -693,7 +756,7 @@
                     marker.bikes_allowed = bikeAllowed;
                     marker.accessibility = accessibility;
 
-                    // Build tooltip HTML with per-marker element IDs so we can fill them dynamically
+                    // Build tooltip HTML with per-marker element IDs
                     var tooltipHtml = `<div class="tooltip-body">
                         <div><strong id="vehicleid-${sid}">${id}</strong></div>
                         <div>Agency: <span id="agency-${sid}">${(routes[marker.route_id] && routes[marker.route_id].agency_id) ? routes[marker.route_id].agency_id : ''}</span></div>
@@ -708,17 +771,11 @@
 
                     marker.bindTooltip(tooltipHtml);
 
-                    // after binding, attempt to update tooltip fields if tooltip is currently open
+                    // update tooltip fields if open
                     updateTooltipFields(marker);
 
                     marker.occupancy_status = v.occupancy_status;
                     updateMarkerColour(marker);
-
-                    // also, if tooltip is open for this marker update DOM spans live
-                    var sid_check = sid;
-                    if ($("#vehicleid-" + sid_check).length) {
-                        updateTooltipFields(marker);
-                    }
                 }
             })
             .catch(err => {
@@ -727,6 +784,7 @@
                 $("#status").text("Error loading vehicle locations.");
             });
         }
+
         setInterval(loop, 10000);
     </script>
 </body>
