@@ -98,16 +98,21 @@
             }
         });
 
-        var railLayer = L.layerGroup();  // NEW
+// Before, you have something like:
+var railLayer = L.layerGroup();
 
-        var overlayMaps = {
-            "AT Buses": layers[3],
-            "AT Trains": layers[2],
-            "AT Ferries": layers[4],
-            "Out of Service": layers[null],
-            "NZ Rail Network": railLayer   // NEW
+// Modify overlayMaps to include busServiceLayer
+var busServiceLayer = L.layerGroup();  // NEW
 
-        };
+var overlayMaps = {
+    "AT Buses": layers[3],
+    "AT Trains": layers[2],
+    "AT Ferries": layers[4],
+    "Out of Service": layers[null],
+    "NZ Rail Network": railLayer,
+    "Bus Service Network": busServiceLayer   // NEW
+};
+
 
         L.control.layers(baseMaps, overlayMaps).addTo(map);
 
@@ -594,6 +599,48 @@
             console.error("Rail network load error:", err);
         });
 }
+
+        // === NZ Bus Service Network (ArcGIS FeatureServer) ===
+function loadBusServiceNetwork() {
+    const busUrl = "https://services2.arcgis.com/JkPEgZJGxhSjYOo0/arcgis/rest/services/BusService/FeatureServer/2/query?where=1%3D1&outFields=*&outSR=4326&f=json";
+
+    fetch(busUrl)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("Bus service network fetch failed: " + response.status);
+        }
+        return response.json();
+      })
+      .then(arcgisJson => {
+        // Convert to GeoJSON
+        const geo = arcgisToGeoJSON(arcgisJson);
+
+        L.geoJSON(geo, {
+          style: {
+            color: "#0074D9",    // blue for buses
+            weight: 2,
+            opacity: 0.7
+          },
+          onEachFeature: (feature, layer) => {
+            const props = feature.properties;
+            // Build some popup content. You can adjust which attributes to show.
+            let popup = `<strong>Bus Service</strong><br>`;
+            if (props.RouteNo) popup += `Route No: ${props.RouteNo}<br>`;
+            if (props.NAME) popup += `Name: ${props.NAME}<br>`;
+            if (props.DESCRIPTION) popup += `Description: ${props.DESCRIPTION}<br>`;
+            layer.bindPopup(popup);
+          }
+        }).addTo(busServiceLayer);
+
+        console.log("Bus service network loaded");
+      })
+      .catch(err => {
+        console.error("Error loading bus service network:", err);
+      });
+}
+
+// Load when page starts
+loadBusServiceNetwork();
 
 // Load at start
 loadRailNetwork();
