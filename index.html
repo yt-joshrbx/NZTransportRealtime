@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AT Transit Realtime</title>
+    <title>NZ Transit Realtime</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta content="script-src 'self' https://unpkg.com https://cdnjs.cloudflare.com https://www.googletagmanager.com;">
@@ -43,7 +43,7 @@
     </style>
 </head>
 <body>
-    <h1 id="title">Welcome to the Auckland Transport Transit Realtime Map!</h1>
+    <h1 id="title">Welcome to the NZ Transit Realtime Map!</h1>
     <div id="map"></div>
     <script>
         // Map setup
@@ -855,7 +855,6 @@ loadRailNetwork();
                         <div>Agency: <span id="agency-${sid}">${(routes[marker.route_id] && routes[marker.route_id].agency_id) ? routes[marker.route_id].agency_id : ''}</span></div>
                         <div>Route: <span id="routeLong-${sid}">${(routes[marker.route_id] && routes[marker.route_id].route_long_name) ? routes[marker.route_id].route_long_name : ''}</span><span id="routePattern-${sid}"></span></div>
                         <div>Headsign: <span id="headsign-${sid}">${marker.headsign || ''}</span></div>
-                        <div>Trip ID: <span id="tripid-${sid}">${marker.trip ? (marker.trip.trip_id || '') : ''}</span></div>
                         <div>Speed: <span id="speed-${sid}">${marker.speed || 0}</span> km/h</div>
                         <div>Occupancy: <span id="occupancy-${sid}">${occupancy[v.occupancy_status] || ''}</span></div>
                         <div>License Plate: <span id="license-${sid}">${vehicleInfo.license_plate || ''}</span></div>
