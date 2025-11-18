@@ -98,11 +98,15 @@
             }
         });
 
+        var railLayer = L.layerGroup();  // NEW
+
         var overlayMaps = {
             "AT Buses": layers[3],
             "AT Trains": layers[2],
             "AT Ferries": layers[4],
-            "Out of Service": layers[null]
+            "Out of Service": layers[null],
+            "NZ Rail Network": railLayer   // NEW
+
         };
 
         L.control.layers(baseMaps, overlayMaps).addTo(map);
@@ -557,6 +561,43 @@
         fetchRoutePatterns();
 
         // === GTFS routes fetch and realtime loop ===
+        // === NZ Rail Network (ArcGIS FeatureServer) ===
+        function loadRailNetwork() {
+            const railUrl = "https://services6.arcgis.com/eqX2HMCD3H8MUs6Q/arcgis/rest/services/NZ_Rail_Network/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=json";
+
+            fetch(railUrl)
+                .then(r => r.json())
+                .then(body => {
+                    // Convert ArcGIS JSON → GeoJSON using the converter you already have
+                    const geo = arcgisToGeoJSON(body);
+
+            L.geoJSON(geo, {
+                style: {
+                    color: "#ff8800",
+                    weight: 3,
+                    opacity: 0.9
+                },
+                onEachFeature: function (feature, layer) {
+                    let p = feature.properties;
+                    layer.bindPopup(
+                        `<b>Rail Segment</b><br>
+                         Line: ${p.LINE_NAME || p.LineName || p.Line || "Unknown"}<br>
+                         Type: ${p.TYPE || "Unknown"}<br>
+                         Owner: ${p.OWNER || "Unknown"}`
+                    );
+                }
+            }).addTo(railLayer);
+
+            console.log("NZ Rail Network loaded");
+        })
+        .catch(err => {
+            console.error("Rail network load error:", err);
+        });
+}
+
+// Load at start
+loadRailNetwork();
+
         map.spin(true);
         fetch('https://api.at.govt.nz/gtfs/v3/routes', {
             method: 'GET',
