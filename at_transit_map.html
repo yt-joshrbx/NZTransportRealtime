@@ -1,22 +1,67 @@
+<!DOCTYPE html>
 <html>
 <head>
-    <title>Transit Map</title>
-</head>
-<body>
-    <h1>Transit Map</h1>
-    <div id="map"></div>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wellington and Christchurch Transport Map</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        /* Responsive design */
+        @media (max-width: 600px) {
+            #map {
+                height: 50vh;
+            }
+        }
+    </style>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
     <script>
-        // Existing transit systems...
+        function initMap() {
+            var wellington = {lat: -41.2865, lng: 174.7762};
+            var christchurch = {lat: -43.5321, lng: 172.6362};
 
-        // Wellington transit system
-        var wellingtonApiEndpoint = 'https://api.wellington-transit.govt.nz/';
-        var wellingtonLayerControl = L.control.layers();
-        // Add commands to load and control Wellington layer...
+            var map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 7,
+                center: wellington
+            });
 
-        // Christchurch transit system
-        var christchurchApiEndpoint = 'https://api.christchurch-transit.govt.nz/';
-        var christchurchLayerControl = L.control.layers();
-        // Add commands to load and control Christchurch layer...
+            // Add markers for Wellington
+            var wellingtonMarker = new google.maps.Marker({
+                position: wellington,
+                map: map,
+                title: 'Wellington'
+            });
+
+            // Add markers for Christchurch
+            var christchurchMarker = new google.maps.Marker({
+                position: christchurch,
+                map: map,
+                title: 'Christchurch'
+            });
+
+            // Implementing trip updates with sample data
+            var tripUpdates = [
+                {location: wellington, info: 'Next bus to Airport: 5 mins'},
+                {location: christchurch, info: 'Next tram arriving: 10 mins'}
+            ];
+
+            tripUpdates.forEach(function(update) {
+                var infowindow = new google.maps.InfoWindow();
+                infowindow.setContent(update.info);
+                infowindow.setPosition(update.location);
+                infowindow.open(map);
+            });
+        }
     </script>
+</head>
+<body onload="initMap()">
+    <div id="map"></div>
 </body>
 </html>
